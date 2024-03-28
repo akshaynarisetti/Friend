@@ -3,7 +3,7 @@
 
 // Settings
 #define DEBUG 1      // Enable pin pulse during ISR
-#define SAMPLES 4000 // Changed to 4000
+#define SAMPLES 800 // Changed to 800
 #define CHUNK_SIZE 200
 #define BUFFER_SIZE (SAMPLES * 4) // Doubled the buffer size to accommodate continuous recording
 

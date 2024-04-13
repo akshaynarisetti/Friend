@@ -31,8 +31,7 @@ Friend is an AI wearable device that records everything you say, gives you proac
 ```mermaid
 graph TD
 A[Device] -- Streams Audio --> B[Phone App]
-B -- Saves Audio --> C[Phone Storage]
-C -- After X mins --> D[Send Audio to Whisper API]
+C -- After X mins --> D[Streams Audio to Deepgram Streaming API]
 D -- Returns Transcript --> B[Phone App]
 B -- Saves Transcript --> F[Phone Storage]
 
@@ -88,7 +87,7 @@ Follow these steps to get started with your Friend.
 3. Install [Flutter](https://docs.flutter.dev/get-started/install/macos/mobile-ios?tab=download) and [CocoaPods](https://guides.cocoapods.org/using/getting-started.html)
 4. Install your environment variables
 
-   - For AppWithWearable, open file api_calls.dart located in `apps/AppWithWearable/lib/backend/api_requests ` Find "Whisper" and instead of "key", provide your own api-key for openai whisper for transcriptions to work
+   - For AppWithWearable, open file ble_receive_w_a_v.dart located in `apps/AppWithWearable/lib/custom_code/actions/` Find "DEEPGRAM_API_KEY" and provide your own api-key for Deepgram for transcriptions to work
 
       <img src="https://github.com/BasedHardware/Friend/assets/43514161/d0fb89d2-07fd-44e3-8563-68f938bb2319" alt="CleanShot 2024-03-25 at 21 58 42" width="400">
 

@@ -31,9 +31,9 @@ Friend is an AI wearable device that records everything you say, gives you proac
 ```mermaid
 graph TD
 A[Device] -- Streams Audio --> B[Phone App]
-C -- After X mins --> D[Streams Audio to Deepgram Streaming API]
-D -- Returns Transcript --> B[Phone App]
-B -- Saves Transcript --> F[Phone Storage]
+B -- Phone App --> C[Streams Audio to Deepgram Streaming API]
+C -- Returns Transcript --> D[Phone App]
+D -- Saves Transcript --> F[Phone Storage]
 
 classDef lightMode fill:#FFFFFF, stroke:#333333, color:#333333;
 classDef darkMode fill:#333333, stroke:#FFFFFF, color:#FFFFFF;

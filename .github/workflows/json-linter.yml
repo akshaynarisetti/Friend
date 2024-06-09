@@ -1,0 +1,22 @@
+name: JSON Linter
+
+on:
+  pull_request:
+    paths:
+      - 'path/to/your/file.json'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Lint JSON
+      run: |
+        jq empty community-plugins.json

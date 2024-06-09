@@ -7,7 +7,7 @@ import numpy as np
 import time
 import os
 import struct
-from scipy.signal import stft, istft
+from scipy.signal  import stft, istft
 
 DEVICE_NAME = "Friend"
 SERVICE_UUID = "19B10000-E8F2-537E-4F6C-D104768A1214"

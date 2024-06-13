@@ -3,56 +3,58 @@ import 'dart:math';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-class Structured {
+class MemoryStructured {
   String title;
   String overview;
   List<String> actionItems;
   List<String> pluginsResponse;
-  String emoji = ['🚀', '🤔', '📚', '🏃‍♂️', '📞'][Random().nextInt(5)];
+  String emoji;
   String category;
 
-  Structured({
+  MemoryStructured({
     this.title = "",
     this.overview = "",
     required this.actionItems,
     required this.pluginsResponse,
+    this.emoji = '',
     this.category = '',
   });
 
-  factory Structured.fromJson(Map<String, dynamic> json) => Structured(
-        title: json['title'],
-        overview: json['overview'],
-        actionItems: List<String>.from(json['action_items'] ?? []),
-        pluginsResponse: List<String>.from(json['pluginsResponse'] ?? []),
-        category: json['category'] ?? '',
-      );
+  factory MemoryStructured.fromJson(Map<String, dynamic> json) => MemoryStructured(
+      title: json['title'] ?? '',
+      overview: json['overview'] ?? '',
+      actionItems: List<String>.from(json['action_items'] ?? []),
+      pluginsResponse: List<String>.from(json['pluginsResponse'] ?? []),
+      category: json['category'] ?? '',
+      emoji: json['emoji'] ?? '');
 
   Map<String, dynamic> toJson() => {
         'title': title,
         'overview': overview,
         'action_items': List<dynamic>.from(actionItems),
         'pluginsResponse': List<dynamic>.from(pluginsResponse),
+        'emoji': emoji,
         'category': category,
       };
+
+  getEmoji() {
+    try {
+      return utf8.decode(emoji.toString().codeUnits);
+    } catch (e) {
+      return ['🧠', '😎', '🧑‍💻', '🎂'][Random().nextInt(4)];
+    }
+  }
 
   @override
   String toString() {
     var str = '';
-    str += 'Title: $title\n';
-    str += 'Summary: $overview\n';
+    str += '${getEmoji()} $title ($category)\n\nSummary: $overview\n\n';
     if (actionItems.isNotEmpty) {
       str += 'Action Items:\n';
+      for (var item in actionItems) {
+        str += '- $item\n';
+      }
     }
-    for (var item in actionItems) {
-      str += '  - $item\n';
-    }
-    if (pluginsResponse.isNotEmpty) {
-      str += 'Plugins Response:\n';
-    }
-    for (var response in pluginsResponse) {
-      str += '  - $response\n';
-    }
-    str += 'Category: $category\n';
     return str;
   }
 }
@@ -62,7 +64,7 @@ class MemoryRecord {
   DateTime createdAt;
   String transcript;
   String? recordingFilePath;
-  Structured structured;
+  MemoryStructured structured;
   bool discarded;
 
   MemoryRecord({
@@ -79,7 +81,7 @@ class MemoryRecord {
         id: json['id'],
         recordingFilePath: json['recording_file_path'],
         createdAt: DateTime.parse(json['created_at']),
-        structured: Structured.fromJson(json['structured']),
+        structured: MemoryStructured.fromJson(json['structured']),
         discarded: json['discarded'] ?? false,
       );
 
@@ -91,16 +93,6 @@ class MemoryRecord {
         'recording_audio_path': recordingFilePath,
         'discarded': discarded,
       };
-
-  static List<MemoryRecord> fromJsonList(List<dynamic> jsonList) {
-    List<MemoryRecord> memories = [];
-    for (var json in jsonList) {
-      memories.add(MemoryRecord.fromJson(json));
-    }
-    return memories;
-  }
-
-  String getStructuredString() => structured.toString();
 
   static String memoriesToString(List<MemoryRecord> memories) => memories
       .map((e) => '''
@@ -120,13 +112,6 @@ class MemoryRecord {
 
 class MemoryStorage {
   static const String _storageKey = '_memories';
-
-  static Future<void> addMemory(MemoryRecord memory) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> allMemories = prefs.getStringList(_storageKey) ?? [];
-    allMemories.add(jsonEncode(memory.toJson()));
-    await prefs.setStringList(_storageKey, allMemories);
-  }
 
   static Future<List<MemoryRecord>> getAllMemories({includeDiscarded = false}) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -148,76 +133,13 @@ class MemoryStorage {
     return filtered;
   }
 
-  static Future<List<MemoryRecord>> retrieveRecentMemoriesWithinMinutes({int minutes = 10, int count = 2}) async {
-    List<MemoryRecord> allMemories = await getAllMemories();
-    DateTime now = DateTime.now();
-    DateTime timeLimit = now.subtract(Duration(minutes: minutes));
-    var filtered = allMemories.where((memory) => memory.createdAt.isAfter(timeLimit)).toList();
-    if (filtered.length > count) {
-      filtered = filtered.sublist(0, count);
-    }
-    return filtered;
-  }
-
-  static Future<void> updateMemory(String memoryId, String updatedTitle, String updatedDescription) async {
+  static Future<void> updateWholeMemory(MemoryRecord newMemory) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     List<String> allMemories = prefs.getStringList(_storageKey) ?? [];
-    int index = allMemories.indexWhere((memory) => MemoryRecord.fromJson(jsonDecode(memory)).id == memoryId);
+    int index = allMemories.indexWhere((memory) => MemoryRecord.fromJson(jsonDecode(memory)).id == newMemory.id);
     if (index >= 0 && index < allMemories.length) {
-      MemoryRecord oldMemory = MemoryRecord.fromJson(jsonDecode(allMemories[index]));
-      MemoryRecord updatedRecord = MemoryRecord(
-        id: oldMemory.id,
-        createdAt: oldMemory.createdAt,
-        transcript: oldMemory.transcript,
-        recordingFilePath: oldMemory.recordingFilePath,
-        structured: Structured(
-          title: updatedTitle,
-          overview: updatedDescription,
-          actionItems: oldMemory.structured.actionItems,
-          pluginsResponse: oldMemory.structured.pluginsResponse,
-          category: oldMemory.structured.category,
-        ),
-        discarded: oldMemory.discarded,
-      );
-      allMemories[index] = jsonEncode(updatedRecord.toJson());
+      allMemories[index] = jsonEncode(newMemory.toJson());
       await prefs.setStringList(_storageKey, allMemories);
     }
-  }
-
-  static Future<void> deleteMemory(String memoryId) async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> allMemories = prefs.getStringList(_storageKey) ?? [];
-    int index = allMemories.indexWhere((memory) => MemoryRecord.fromJson(jsonDecode(memory)).id == memoryId);
-    if (index >= 0 && index < allMemories.length) {
-      allMemories.removeAt(index);
-      await prefs.setStringList(_storageKey, allMemories);
-    }
-  }
-
-  static Future<List<MemoryRecord>> getMemoriesByDay(DateTime day) async {
-    List<MemoryRecord> allMemories = await getAllMemories();
-    return allMemories.where((memory) => isSameDay(memory.createdAt, day)).toList();
-  }
-
-  static Future<List<MemoryRecord>> getMemoriesOfLastWeek() async {
-    DateTime now = DateTime.now();
-    DateTime lastWeekStart = now.subtract(Duration(days: now.weekday + 6));
-    List<MemoryRecord> allMemories = await getAllMemories();
-    return allMemories
-        .where((memory) => memory.createdAt.isAfter(lastWeekStart) && memory.createdAt.isBefore(now))
-        .toList();
-  }
-
-  static Future<List<MemoryRecord>> getMemoriesOfLastMonth() async {
-    DateTime now = DateTime.now();
-    DateTime lastMonthStart = DateTime(now.year, now.month - 1, 1);
-    List<MemoryRecord> allMemories = await getAllMemories();
-    return allMemories
-        .where((memory) => memory.createdAt.isAfter(lastMonthStart) && memory.createdAt.isBefore(now))
-        .toList();
-  }
-
-  static bool isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 }

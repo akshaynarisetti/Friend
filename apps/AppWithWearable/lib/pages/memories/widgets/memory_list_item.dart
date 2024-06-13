@@ -1,16 +1,12 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
-import 'package:fonnx/onnx/ort_ffi_bindings.dart';
+import 'package:friend_private/backend/database/memory.dart';
 import 'package:friend_private/backend/mixpanel.dart';
-import 'package:friend_private/backend/storage/memories.dart';
-import 'package:friend_private/pages/memories/widgets/memory_operations.dart';
 import 'package:friend_private/pages/memory_detail/page.dart';
 import 'package:friend_private/utils/temp.dart';
 
 class MemoryListItem extends StatefulWidget {
   final int memoryIdx;
-  final MemoryRecord memory;
+  final Memory memory;
   final Function loadMemories;
 
   const MemoryListItem({super.key, required this.memory, required this.loadMemories, required this.memoryIdx});
@@ -22,6 +18,7 @@ class MemoryListItem extends StatefulWidget {
 class _MemoryListItemState extends State<MemoryListItem> {
   @override
   Widget build(BuildContext context) {
+    Structured structured = widget.memory.structured.target!;
     return GestureDetector(
       onTap: () async {
         MixpanelManager().memoryListItemClicked(widget.memory, widget.memoryIdx);
@@ -32,7 +29,7 @@ class _MemoryListItemState extends State<MemoryListItem> {
         widget.loadMemories();
       },
       child: Container(
-        margin: EdgeInsets.only(top: 12),
+        margin: const EdgeInsets.only(top: 12),
         width: double.maxFinite,
         decoration: BoxDecoration(
           color: Colors.grey.shade900,
@@ -49,7 +46,7 @@ class _MemoryListItemState extends State<MemoryListItem> {
               widget.memory.discarded
                   ? const SizedBox.shrink()
                   : Text(
-                      widget.memory.structured.title,
+                      structured.title,
                       style: Theme.of(context).textTheme.titleLarge,
                       maxLines: 1,
                     ),
@@ -57,15 +54,13 @@ class _MemoryListItemState extends State<MemoryListItem> {
               widget.memory.discarded
                   ? const SizedBox.shrink()
                   : Text(
-                      widget.memory.structured.overview,
+                      structured.overview,
                       style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: Colors.grey.shade300, height: 1.3),
                       maxLines: 2,
                     ),
               widget.memory.discarded
                   ? Text(
-                      widget.memory.transcript.length > 100
-                          ? '${widget.memory.transcript.substring(0, 100)}...'
-                          : widget.memory.transcript,
+                      widget.memory.getTranscript(maxCount: 100),
                       style: Theme.of(context).textTheme.bodyMedium!.copyWith(color: Colors.grey.shade300, height: 1.3),
                     )
                   : const SizedBox(height: 8),
@@ -88,21 +83,21 @@ class _MemoryListItemState extends State<MemoryListItem> {
             children: [
               widget.memory.discarded
                   ? const SizedBox.shrink()
-                  : Text(widget.memory.structured.emoji,
+                  : Text(widget.memory.structured.target!.getEmoji(),
                       style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600)),
-              widget.memory.structured.category.isNotEmpty && !widget.memory.discarded
+              widget.memory.structured.target!.category.isNotEmpty && !widget.memory.discarded
                   ? const SizedBox(
                       width: 12,
                     )
                   : const SizedBox.shrink(),
-              widget.memory.structured.category.isNotEmpty
+              widget.memory.structured.target!.category.isNotEmpty
                   ? Container(
                       decoration: BoxDecoration(
                         color: Colors.grey.shade800,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: Text(widget.memory.discarded ? 'Discarded' : widget.memory.structured.category,
+                      child: Text(widget.memory.discarded ? 'Discarded' : widget.memory.structured.target!.category,
                           style: Theme.of(context).textTheme.bodyMedium),
                     )
                   : const SizedBox.shrink(),

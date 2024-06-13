@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as ble;
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:friend_private/backend/database/box.dart';
 import 'package:friend_private/backend/mixpanel.dart';
 import 'package:friend_private/pages/home/page.dart';
 import 'package:friend_private/pages/onboarding/welcome/page.dart';
 import 'package:friend_private/utils/notifications.dart';
 import 'package:instabug_flutter/instabug_flutter.dart';
+
 import 'backend/preferences.dart';
 import 'env/env.dart';
 
@@ -15,14 +19,32 @@ void main() async {
   await initializeNotifications();
   await SharedPreferencesUtil.init();
   await MixpanelManager.init();
+  await ObjectBoxUtil.init();
   if (Env.instabugApiKey != null) {
-    await Instabug.init(
-        // TODO: set new API Key to new account
-        token: Env.instabugApiKey!,
-        invocationEvents: [InvocationEvent.shake, InvocationEvent.screenshot]); //InvocationEvent.floatingButton
-    Instabug.setColorTheme(ColorTheme.dark);
+    runZonedGuarded(
+      () {
+        _initStuff();
+        Instabug.init(
+          token: Env.instabugApiKey!,
+          invocationEvents: [InvocationEvent.shake, InvocationEvent.screenshot],
+        );
+        Instabug.setColorTheme(ColorTheme.dark);
+        _getRunApp();
+      },
+      CrashReporting.reportCrash,
+    );
+  } else {
+    _initStuff();
+    _getRunApp();
   }
-  _getRunApp();
+}
+
+_initStuff() async {
+  ble.FlutterBluePlus.setLogLevel(ble.LogLevel.info, color: true);
+  await initializeNotifications();
+  await SharedPreferencesUtil.init();
+  await MixpanelManager.init();
+  await ObjectBoxUtil.init();
 }
 
 _getRunApp() {
@@ -42,6 +64,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorObservers: [InstabugNavigatorObserver()],
       debugShowCheckedModeBanner: false,
       title: 'Friend',
       localizationsDelegates: const [
@@ -70,10 +93,11 @@ class _MyAppState extends State<MyApp> {
           textSelectionTheme: const TextSelectionThemeData(
             cursorColor: Colors.white,
             selectionColor: Colors.deepPurple,
-
           )),
       themeMode: ThemeMode.dark,
-      home: SharedPreferencesUtil().onboardingCompleted ? const HomePageWrapper(btDevice: null) : const WelcomePage(),
+      home: (SharedPreferencesUtil().onboardingCompleted && SharedPreferencesUtil().deviceId != '')
+          ? const HomePageWrapper()
+          : const WelcomePage(),
     );
   }
 }

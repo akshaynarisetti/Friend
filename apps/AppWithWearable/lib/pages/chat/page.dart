@@ -1,5 +1,11 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:friend_private/backend/api_requests/api_calls.dart';
 import 'package:friend_private/backend/api_requests/stream_api_response.dart';
+import 'package:friend_private/backend/database/memory.dart';
+import 'package:friend_private/backend/database/memory_provider.dart';
 import 'package:friend_private/backend/mixpanel.dart';
 import 'package:friend_private/backend/preferences.dart';
 import 'package:friend_private/backend/storage/memories.dart';
@@ -7,15 +13,12 @@ import 'package:friend_private/backend/storage/message.dart';
 import 'package:friend_private/pages/chat/widgets/ai_message.dart';
 import 'package:friend_private/pages/chat/widgets/user_message.dart';
 import 'package:friend_private/utils/temp.dart';
-import 'package:uuid/uuid.dart';
 import 'package:gradient_borders/gradient_borders.dart';
-
-import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
+import 'package:uuid/uuid.dart';
 
 class ChatPage extends StatefulWidget {
   final FocusNode textFieldFocusNode;
-  final List<MemoryRecord> memories;
+  final List<Memory> memories;
 
   const ChatPage({
     super.key,
@@ -49,8 +52,12 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
   @override
   void initState() {
     super.initState();
-    _messages = [Message(text: 'What would you like to search for?', type: 'ai', id: '1')] + prefs.chatMessages;
-    SchedulerBinding.instance.addPostFrameCallback((_) => _moveListToBottom(initial: true));
+    var msg = prefs.chatMessages;
+    _messages =
+        msg.isEmpty ? [Message(text: 'What would you like to search for?', type: 'ai', id: '1')] : prefs.chatMessages;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _moveListToBottom(initial: true);
+    });
   }
 
   @override
@@ -71,6 +78,7 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
               Expanded(
                   child: ListView.builder(
                 scrollDirection: Axis.vertical,
+                controller: listViewController,
                 itemCount: _messages.length,
                 itemBuilder: (context, chatIndex) {
                   final message = _messages[chatIndex];
@@ -87,7 +95,7 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
                         message: message,
                         sendMessage: _sendMessageUtil,
                         displayOptions: _messages.length <= 1,
-                        memories: widget.memories.where((m) => messageMemoriesId.contains(m.id)).toList(),
+                        memories: widget.memories.where((m) => messageMemoriesId.contains(m.id.toString())).toList(),
                       ),
                     );
                   }
@@ -101,7 +109,6 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
                     child: HumanMessage(message: message),
                   );
                 },
-                controller: listViewController,
               )),
               // const SizedBox(height: 160),
             ],
@@ -131,9 +138,8 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
               ),
               child: TextField(
                 enabled: true,
-                autofocus: false,
                 controller: textController,
-                textCapitalization: TextCapitalization.sentences,
+                // textCapitalization: TextCapitalization.sentences,
                 obscureText: false,
                 focusNode: widget.textFieldFocusNode,
                 // canRequestFocus: true,
@@ -164,9 +170,9 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
                               _sendMessageUtil(message);
                             },
                     )),
-                maxLines: 8,
-                minLines: 1,
-                keyboardType: TextInputType.multiline,
+                // maxLines: 8,
+                // minLines: 1,
+                // keyboardType: TextInputType.multiline,
                 style: TextStyle(fontSize: 14.0, color: Colors.grey.shade200),
               ),
             ),
@@ -203,8 +209,10 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
     if (memoriesId.isEmpty) {
       return ['', []];
     }
-    List<MemoryRecord> memories = await MemoryStorage.getAllMemoriesByIds(memoriesId);
-    return [MemoryRecord.memoriesToString(memories), memoriesId];
+    List<int> memoriesIdAsInt = memoriesId.map((e) => int.tryParse(e) ?? -1).where((e) => e != -1).toList();
+    debugPrint('memoriesIdAsInt: $memoriesIdAsInt');
+    List<Memory> memories = await MemoryProvider().getMemoriesById(memoriesIdAsInt);
+    return [Memory.memoriesToString(memories), memoriesId];
   }
 
   _prepareStreaming(String text) {
@@ -235,10 +243,6 @@ class _ChatPageState extends State<ChatPage> with AutomaticKeepAliveClientMixin 
   }
 
   _moveListToBottom({bool initial = false}) async {
-    await listViewController.animateTo(
-      listViewController.position.maxScrollExtent + (initial ? 100 : 0),
-      duration: const Duration(milliseconds: 100),
-      curve: Curves.ease,
-    );
+    listViewController.jumpTo(listViewController.position.maxScrollExtent + (initial ? 240 : 0));
   }
 }

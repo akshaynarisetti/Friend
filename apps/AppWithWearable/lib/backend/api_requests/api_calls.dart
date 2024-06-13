@@ -1,19 +1,22 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:collection/collection.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:friend_private/backend/database/memory.dart';
 import 'package:friend_private/backend/preferences.dart';
 import 'package:friend_private/backend/storage/memories.dart';
 import 'package:friend_private/backend/storage/message.dart';
+import 'package:friend_private/backend/storage/plugin.dart';
 import 'package:friend_private/backend/storage/sample.dart';
 import 'package:friend_private/backend/storage/segment.dart';
-import 'package:friend_private/backend/storage/plugin.dart';
 import 'package:friend_private/env/env.dart';
 import 'package:http/http.dart' as http;
-import 'package:path/path.dart';
-import '../../utils/string_utils.dart';
+import 'package:instabug_http_client/instabug_http_client.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart';
+
+import '../../utils/string_utils.dart';
 
 Future<http.Response?> makeApiCall({
   required String url,
@@ -22,10 +25,12 @@ Future<http.Response?> makeApiCall({
   required String method,
 }) async {
   try {
+    final client = InstabugHttpClient();
+
     if (method == 'POST') {
-      return await http.post(Uri.parse(url), headers: headers, body: body);
+      return await client.post(Uri.parse(url), headers: headers, body: body);
     } else if (method == 'GET') {
-      return await http.get(Uri.parse(url), headers: headers);
+      return await client.get(Uri.parse(url), headers: headers);
     }
   } catch (e) {
     debugPrint('HTTP request failed: $e');
@@ -108,8 +113,8 @@ Future<String> executeGptPrompt(String? prompt) async {
   return response;
 }
 
-_getPrevMemoriesStr(List<MemoryRecord> previousMemories) {
-  var prevMemoriesStr = MemoryRecord.memoriesToString(previousMemories);
+_getPrevMemoriesStr(List<Memory> previousMemories) {
+  var prevMemoriesStr = Memory.memoriesToString(previousMemories);
   return prevMemoriesStr.isNotEmpty
       ? '''\nFor extra context consider the previous recent memories:
     These below, are the user most recent memories, they were already structured and saved, so only use them for help structuring the new memory \
@@ -122,9 +127,11 @@ _getPrevMemoriesStr(List<MemoryRecord> previousMemories) {
       : '';
 }
 
-Future<Structured> generateTitleAndSummaryForMemory(String transcript, List<MemoryRecord> previousMemories) async {
-  if (transcript.isEmpty || transcript.split(' ').length < 7)
-    return Structured(actionItems: [], pluginsResponse: [], category: '');
+Future<MemoryStructured> generateTitleAndSummaryForMemory(String transcript, List<Memory> previousMemories) async {
+  if (transcript.isEmpty || transcript.split(' ').length < 7) {
+    return MemoryStructured(actionItems: [], pluginsResponse: [], category: '');
+  }
+
   final languageCode = SharedPreferencesUtil().recordingsLanguage;
   final pluginsEnabled = SharedPreferencesUtil().pluginsEnabled;
   // final plugin = SharedPreferencesUtil().pluginsList.firstWhereOrNull((e) => pluginsEnabled.contains(e.id));
@@ -169,8 +176,8 @@ Future<Structured> generateTitleAndSummaryForMemory(String transcript, List<Memo
   Future<List<String>> allPluginResponses = Future.wait(pluginPrompts);
   var structuredResponse = extractJson(await executeGptPrompt(prompt));
   List<String> responses = await allPluginResponses;
-
-  return Structured.fromJson(jsonDecode(structuredResponse)..['pluginsResponse'] = responses);
+  var json = jsonDecode(structuredResponse);
+  return MemoryStructured.fromJson(json..['pluginsResponse'] = responses);
 }
 
 Future<String> adviseOnCurrentConversation(String transcript) async {
@@ -206,18 +213,6 @@ Future<String> adviseOnCurrentConversation(String transcript) async {
   var result = await executeGptPrompt(prompt);
   if (result.contains('N/A') || result.split(' ').length < 5) return '';
   return result;
-}
-
-Future<String> requestSummary(List<MemoryRecord> memories) async {
-  var prompt = '''
-    Based on my recent memories below, summarize everything into 3-4 most important facts I need to remember. 
-    Write the final output only and make it very short and concise, less than 200 symbols total as bullet-points. 
-    Make it interesting with an insight, specific, professional and simple to read:
-    ``` 
-    ${MemoryRecord.memoriesToString(memories)}
-    ``` 
-    ''';
-  return await executeGptPrompt(prompt);
 }
 
 Future<List<double>> getEmbeddingsFromInput(String input) async {
@@ -271,36 +266,14 @@ Future<dynamic> pineconeApiCall({required String urlSuffix, required String body
   return responseBody;
 }
 
-Future<void> updateCreatedAtInPinecone(String memoryId, int timestamp) async {
-  // Construct the URL for the Pinecone API
-  var url = '${Env.pineconeIndexUrl}/vectors/update';
-
-  // Set up the headers for the request including the authentication token and content type
-  final headers = {
-    'Api-Key': Env.pineconeApiKey,
-    'Content-Type': 'application/json',
-  };
-
-  // Define the body of the request, including the ID and the new metadata for `created_at`
-  var body = jsonEncode({
-    'id': memoryId,
-    'setMetadata': {
-      'created_at': timestamp,
-    },
-    'namespace': Env.pineconeIndexNamespace,
-  });
-
-  // Make the HTTP POST request to update the record in Pinecone
-  var response = await http.post(
-    Uri.parse(url),
-    headers: headers,
-    body: body,
-  );
-
-  // Check the response, and if it's not successful, throw an error
-  if (response.statusCode != 200) {
-    throw Exception('Failed to update memory record in Pinecone: ${response.body}');
-  }
+Future<void> updatePineconeMemoryId(String memoryId, int newId) {
+  return pineconeApiCall(
+      urlSuffix: 'vectors/update',
+      body: jsonEncode({
+        'id': memoryId,
+        'setMetadata': {'memory_id': newId.toString()},
+        'namespace': Env.pineconeIndexNamespace,
+      }));
 }
 
 Future<bool> createPineconeVector(String? memoryId, List<double>? vectorList) async {
@@ -351,12 +324,12 @@ Future<List<String>> queryPineconeVectors(List<double>? vectorList, {int? startT
     'vector': vectorList,
     'topK': 5,
     'includeValues': false,
-    'includeMetadata': false,
+    'includeMetadata': true,
     'filter': filter,
   });
   var responseBody = await pineconeApiCall(urlSuffix: 'query', body: body);
   debugPrint(responseBody.toString());
-  return (responseBody['matches'])?.map<String>((e) => e['id'].toString()).toList() ?? [];
+  return (responseBody['matches'])?.map<String>((e) => e['metadata']['memory_id'].toString()).toList() ?? [];
 }
 
 Future<bool> deleteVector(String memoryId) async {
@@ -396,9 +369,10 @@ Future<List<TranscriptSegment>> transcribeAudioFile(File file, String uid) async
   request.files.add(await http.MultipartFile.fromPath('file', file.path, filename: basename(file.path)));
 
   try {
+    var startTime = DateTime.now();
     var streamedResponse = await request.send();
     var response = await http.Response.fromStream(streamedResponse);
-
+    debugPrint('TranscribeAudioFile took: ${DateTime.now().difference(startTime).inSeconds} seconds');
     if (response.statusCode == 200) {
       var data = jsonDecode(response.body);
       debugPrint('Response body: ${response.body}');
